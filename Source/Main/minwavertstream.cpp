@@ -4,6 +4,7 @@
 #include "endpoints.h"
 #include "minwavert.h"
 #include "minwavertstream.h"
+#include "Inc/rasamic_feed.h"
 #define MINWAVERTSTREAM_POOLTAG 'SRWM'
 
 #pragma warning (disable : 4127)
@@ -1198,6 +1199,13 @@ NTSTATUS CMiniportWaveRTStream::SetState
 
             KeReleaseSpinLock(&m_PositionSpinLock, oldIrql);
 
+            // Rasa: drop stale feed audio so a restart begins with silence
+            // until the server feeds again.
+            if (m_bCapture)
+            {
+                RasaFeedFlush();
+            }
+
             // Wait until all work items are completed.
             if (!m_bCapture && !g_DoNotCreateDataFiles)
             {
@@ -1244,6 +1252,12 @@ NTSTATUS CMiniportWaveRTStream::SetState
             }
             // This call updates the linear buffer and presentation positions.
             GetPositions(NULL, NULL, NULL);
+
+            // Rasa: pause drops pending feed audio (mirrors stop behavior).
+            if (m_bCapture)
+            {
+                RasaFeedFlush();
+            }
             break;
 
         case KSSTATE_RUN:
@@ -1397,7 +1411,8 @@ VOID CMiniportWaveRTStream::WriteBytes
 
 Routine Description:
 
-This function writes the audio buffer using silence instead of a tone generator
+This function fills the capture DMA buffer from the Rasa user-mode feed ring,
+producing silence when the ring underruns.
 
 Arguments:
 
@@ -1413,8 +1428,8 @@ ByteDisplacement - # of bytes to process.
     {
         ULONG runWrite = min(ByteDisplacement, m_ulDmaBufferSize - bufferOffset);
         
-        // Instead of generating a tone, just output silence
-        RtlZeroMemory(m_pDmaBuffer + bufferOffset, runWrite);
+        // Rasa: drain the user-mode feed ring; silence on underrun.
+        RasaFeedRead(m_pDmaBuffer + bufferOffset, runWrite);
            	
         bufferOffset = (bufferOffset + runWrite) % m_ulDmaBufferSize;
         ByteDisplacement -= runWrite;

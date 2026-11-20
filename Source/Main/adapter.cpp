@@ -22,6 +22,7 @@ Abstract:
 #include "definitions.h"
 #include "endpoints.h"
 #include "minipairs.h"
+#include "Inc/rasamic_feed.h"
 
 typedef void (*fnPcDriverUnload) (PDRIVER_OBJECT);
 fnPcDriverUnload gPCDriverUnloadRoutine = NULL;
@@ -111,6 +112,11 @@ Environment:
     {
         gPCDriverUnloadRoutine(DriverObject);
     }
+
+    //
+    // Free the PCM feed ring after portcls has released the miniports.
+    //
+    RasaFeedCleanup();
 
     //
     // Unload WDF driver object. 
@@ -424,6 +430,19 @@ Return Value:
             maxObjects,
             0
         );
+
+    //
+    // Rasa: expose the user-mode PCM feed control device. Non-fatal: without
+    // it the mic still enumerates and outputs silence (monitor-less fallback).
+    //
+    if (NT_SUCCESS(ntStatus))
+    {
+        NTSTATUS feedStatus = RasaFeedInit(WdfGetDriver());
+        if (!NT_SUCCESS(feedStatus))
+        {
+            DPF(D_ERROR, ("RasaFeedInit failed 0x%x, mic will output silence", feedStatus));
+        }
+    }
 
     return ntStatus;
 } // AddDevice
