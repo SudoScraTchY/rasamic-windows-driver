@@ -51,6 +51,7 @@ NTSTATUS RasaFeedInit(_In_ WDFDRIVER Driver)
     WDF_IO_QUEUE_CONFIG queueConfig;
     WDFQUEUE queue;
     DECLARE_CONST_UNICODE_STRING(interfaceName, L"RasaMicCtl");
+    DECLARE_CONST_UNICODE_STRING(controlSddl, SDDL_DEVOBJ_SYS_ALL_ADM_RWX_WORLD_RWX_RES_RWX);
 
     PAGED_CODE();
 
@@ -66,7 +67,7 @@ NTSTATUS RasaFeedInit(_In_ WDFDRIVER Driver)
     g_Ring->Head = 0;
     g_Ring->Tail = 0;
 
-    deviceInit = WdfControlDeviceInitAllocate(Driver, &SDDL_DEVOBJ_SYS_ALL_ADM_RWX_WORLD_RWX_RES_RWX);
+    deviceInit = WdfControlDeviceInitAllocate(Driver, &controlSddl);
     if (deviceInit == NULL) {
         status = STATUS_INSUFFICIENT_RESOURCES;
         goto Done;
