@@ -39,14 +39,14 @@ static RASA_RING*  g_Ring = NULL;
 static WDFDEVICE   g_ControlDevice = NULL;
 
 EVT_WDF_IO_QUEUE_IO_DEVICE_CONTROL RasaFeedEvtIoDeviceControl;
-EVT_WDF_DEVICE_FILE_CLEANUP        RasaFeedEvtFileCleanup;
+EVT_WDF_OBJECT_CONTEXT_CLEANUP    RasaFeedEvtQueueCleanup;
 
 //=============================================================================
 #pragma code_seg("PAGE")
 NTSTATUS RasaFeedInit(_In_ WDFDRIVER Driver)
 {
     NTSTATUS status;
-    PWDF_OBJECT_ATTRIBUTES attributes;
+    WDF_OBJECT_ATTRIBUTES attributes;
     WDFDEVICE_INIT* deviceInit = NULL;
     WDF_IO_QUEUE_CONFIG queueConfig;
     WDFQUEUE queue;
@@ -59,7 +59,7 @@ NTSTATUS RasaFeedInit(_In_ WDFDRIVER Driver)
     }
 
     g_Ring = (RASA_RING*)ExAllocatePool2(
-        POOL_FLAG_NON_PAGES | POOL_FLAG_UNINITIALIZED, sizeof(RASA_RING), RASA_FEED_POOLTAG);
+        POOL_FLAG_NON_PAGED | POOL_FLAG_UNINITIALIZED, sizeof(RASA_RING), RASA_FEED_POOLTAG);
     if (g_Ring == NULL) {
         return STATUS_INSUFFICIENT_RESOURCES;
     }
@@ -76,11 +76,11 @@ NTSTATUS RasaFeedInit(_In_ WDFDRIVER Driver)
     WdfDeviceInitSetCharacteristics(deviceInit, FILE_DEVICE_SECURE_OPEN, FALSE);
     WdfDeviceInitAssignName(deviceInit, &interfaceName);
 
-    WDF_OBJECT_ATTRIBUTES_INIT(attributes);
-    attributes->ExecutionLevel = WdfExecutionLevelPassive;
-    attributes->SynchronizationScope = WdfSynchronizationScopeNone;
+    WDF_OBJECT_ATTRIBUTES_INIT(&attributes);
+    attributes.ExecutionLevel = WdfExecutionLevelPassive;
+    attributes.SynchronizationScope = WdfSynchronizationScopeNone;
 
-    status = WdfDeviceCreate(&deviceInit, attributes, &g_ControlDevice);
+    status = WdfDeviceCreate(&deviceInit, &attributes, &g_ControlDevice);
     if (!NT_SUCCESS(status)) {
         goto Done;
     }
@@ -94,9 +94,9 @@ NTSTATUS RasaFeedInit(_In_ WDFDRIVER Driver)
     queueConfig.EvtIoDeviceControl = RasaFeedEvtIoDeviceControl;
     queueConfig.PowerManaged = WdfFalse;
 
-    WDF_OBJECT_ATTRIBUTES_INIT(attributes);
-    attributes->EvtCleanupCallback = RasaFeedEvtFileCleanup;
-    status = WdfIoQueueCreate(g_ControlDevice, &queueConfig, attributes, &queue);
+    WDF_OBJECT_ATTRIBUTES_INIT(&attributes);
+    attributes.EvtCleanupCallback = RasaFeedEvtQueueCleanup;
+    status = WdfIoQueueCreate(g_ControlDevice, &queueConfig, &attributes, &queue);
     if (!NT_SUCCESS(status)) {
         goto Done;
     }
@@ -241,10 +241,8 @@ VOID RasaFeedEvtIoDeviceControl(
 }
 
 #pragma code_seg()
-VOID RasaFeedEvtFileCleanup(_In_ WDFOBJECT Object)
+VOID RasaFeedEvtQueueCleanup(_In_ WDFOBJECT Object)
 {
     UNREFERENCED_PARAMETER(Object);
-    /* Feed process died or closed the handle: drop stale audio so a restart
-     * does not play back old buffered PCM. */
     RasaFeedFlush();
 }
